@@ -97,6 +97,11 @@ class SessionManager {
     "Accept-Language": "pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7",
   };
 
+  // Cache session verification to avoid unnecessary cookie rotation
+  private lastVerifiedAt = 0;
+  private lastVerifiedResult = false;
+  private static VERIFY_CACHE_TTL_MS = 60_000; // 60 seconds
+
   constructor() {
     this.loadSession();
   }
@@ -168,6 +173,13 @@ class SessionManager {
 
   public async verifySession(): Promise<boolean> {
     if (this.cookies.size === 0) return false;
+
+    // Return cached result if still valid
+    const now = Date.now();
+    if (this.lastVerifiedResult && (now - this.lastVerifiedAt) < SessionManager.VERIFY_CACHE_TTL_MS) {
+      return true;
+    }
+
     try {
       const res = await fetch(`${BASE_URL}/teste`, {
         headers: {
@@ -178,10 +190,20 @@ class SessionManager {
       });
       this.updateCookies(res);
       const text = await res.text();
-      return text.includes("registeredUser', true") || text.includes("/sair");
+      const isAuthed = text.includes("registeredUser', true") || text.includes("/sair");
+      this.lastVerifiedResult = isAuthed;
+      this.lastVerifiedAt = now;
+      return isAuthed;
     } catch (e) {
+      this.lastVerifiedResult = false;
       return false;
     }
+  }
+
+  /** Invalidate the cached session so next fetch() will re-verify or re-login */
+  public invalidateSession() {
+    this.lastVerifiedAt = 0;
+    this.lastVerifiedResult = false;
   }
 
   public async login(): Promise<boolean> {
@@ -232,6 +254,8 @@ class SessionManager {
 
     if (isSuccess) {
       console.log("[Auth] Autenticado com sucesso no Bom Condutor!");
+      this.lastVerifiedResult = true;
+      this.lastVerifiedAt = Date.now();
       return true;
     }
 
@@ -248,6 +272,12 @@ class SessionManager {
     }
 
     throw new Error("Falha no login: credenciais inválidas ou erro no portal Bom Condutor.");
+  }
+
+  /** Force a fresh login, invalidating the cached session first */
+  public async forceLogin(): Promise<boolean> {
+    this.invalidateSession();
+    return this.login();
   }
 
   public async fetch(url: string, init?: RequestInit): Promise<Response> {
@@ -269,12 +299,107 @@ class SessionManager {
     this.updateCookies(res);
     return res;
   }
+
+  /** Perform a fetch using current cookies without verifying the session first.
+   *  Used for retries where we just did a fresh login. */
+  public async rawFetch(url: string, init?: RequestInit): Promise<Response> {
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      "Cookie": this.getCookieHeader(),
+      ...(init?.headers as Record<string, string> || {})
+    };
+
+    const res = await fetch(url, {
+      ...init,
+      headers
+    });
+    this.updateCookies(res);
+    return res;
+  }
 }
 
 const sessionManager = new SessionManager();
 
-// Cache for images
+// Cache for images & comments
 const imageCache = new Map<string, { buffer: ArrayBuffer; contentType: string }>();
+
+interface CommentItem {
+  author: string;
+  message: string;
+  createdAt: string;
+  likes: number;
+  isOfficial?: boolean;
+}
+
+const commentsCache = new Map<string, CommentItem[]>();
+
+function decryptExplanation(qid: number | string, cipher: string | null): string | null {
+  if (!cipher || !qid) return null;
+  try {
+    const r = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const digitsSum = String(qid).split("").reduce((acc, d) => acc + (parseInt(d, 10) || 0), 0);
+    const o = digitsSum;
+    const a = r.slice(o) + r.slice(0, o);
+
+    let transliterated = "";
+    for (let i = 0; i < cipher.length; i++) {
+      const idx = a.indexOf(cipher[i]);
+      transliterated += idx !== -1 ? r[idx] : cipher[i];
+    }
+
+    const decoded = Buffer.from(transliterated, "base64").toString("utf-8");
+    try {
+      return JSON.parse(decoded);
+    } catch {
+      return decoded;
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function getQuestionComments(qid: string): Promise<CommentItem[]> {
+  if (commentsCache.has(qid)) {
+    return commentsCache.get(qid)!;
+  }
+  try {
+    const disqusUrl = `https://disqus.com/embed/comments/?base=default&f=bomcondutor&t_i=questao-${qid}&t_u=https%3A%2F%2Fwww.bomcondutor.pt%2Fquestao%2F${qid}`;
+    const res = await fetch(disqusUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+      }
+    });
+    const html = await res.text();
+    const scripts = html.match(/<script[^>]*>(.*?)<\/script>/gs) || [];
+    const list: CommentItem[] = [];
+
+    for (const s of scripts) {
+      const content = s.replace(/<\/?script[^>]*>/gi, "").trim();
+      if (content.includes('"posts"') && content.includes('"response"')) {
+        try {
+          const data = JSON.parse(content);
+          const posts = data?.response?.posts || [];
+          for (const p of posts) {
+            const author = p?.author?.name || "Anónimo";
+            list.push({
+              author,
+              message: p?.message || "",
+              createdAt: p?.createdAt || "",
+              likes: p?.likes || 0,
+              isOfficial: author.toLowerCase().includes("bom condutor")
+            });
+          }
+        } catch {}
+      }
+    }
+    list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    commentsCache.set(qid, list);
+    return list;
+  } catch (e) {
+    console.warn(`Could not fetch comments for ${qid}:`, e);
+    return [];
+  }
+}
 
 // Bun Server implementation
 const server = Bun.serve({
@@ -378,11 +503,14 @@ const server = Bun.serve({
 
         const testSetup = JSON.parse(testMatch[1]);
 
-        // Attach absolute image URLs to each question for easy rendering
+        // Attach absolute image URLs to each question and decrypt explanation
         if (Array.isArray(testSetup.questions)) {
           for (const q of testSetup.questions) {
             q.imageUrl = `${BASE_URL}/assets/images/questions/${q.id}.jpg`;
             q.proxyImageUrl = `/api/image/${q.id}`;
+            if (q.explicacao) {
+              q.explicacao = decryptExplanation(q.id, q.explicacao);
+            }
           }
         }
 
@@ -410,43 +538,72 @@ const server = Bun.serve({
 
         console.log(`[Exam] A submeter teste com hash ${body.hash.slice(0, 20)}...`);
 
-        // Retrieve CSRF token from cookies
-        const csrfToken = sessionManager.getCookie("csrf") || "";
-
-        // Serialize payload into application/x-www-form-urlencoded as AngularJS transformRequest does
-        const params = new URLSearchParams();
-        params.append("hash", body.hash);
-        params.append("force", body.force ? "true" : "false");
-        if (csrfToken) {
-          params.append("csrf", csrfToken);
+        // Helper: build the url-encoded body for /api/tests/process
+        function buildSubmitParams(hash: string, picks: Record<string, string>, force: boolean, csrf: string): string {
+          const params = new URLSearchParams();
+          params.append("hash", hash);
+          params.append("force", force ? "true" : "false");
+          if (csrf) params.append("csrf", csrf);
+          for (const [qId, pick] of Object.entries(picks)) {
+            params.append(`picks[${qId}]`, String(pick));
+          }
+          return params.toString();
         }
 
-        for (const [qId, pick] of Object.entries(body.picks)) {
-          params.append(`picks[${qId}]`, String(pick));
+        // Helper: submit to Bom Condutor
+        async function submitToBomCondutor(useRawFetch: boolean): Promise<any> {
+          const csrf = sessionManager.getCookie("csrf") || "";
+          const submitBody = buildSubmitParams(body.hash, body.picks, !!body.force, csrf);
+          const fetchFn = useRawFetch ? "rawFetch" : "fetch";
+          const submitRes = await sessionManager[fetchFn](`${BASE_URL}/api/tests/process`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+              "Referer": `${BASE_URL}/teste`,
+              "Origin": BASE_URL,
+              "X-Requested-With": "XMLHttpRequest",
+              "X-XSRF-TOKEN": csrf
+            },
+            body: submitBody
+          });
+          console.log(`[Exam] Resposta do processamento: ${submitRes.status}`);
+          try {
+            return await submitRes.json();
+          } catch {
+            return null;
+          }
         }
 
-        // 1. POST to https://www.bomcondutor.pt/api/tests/process
-        const submitRes = await sessionManager.fetch(`${BASE_URL}/api/tests/process`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
-            "Referer": `${BASE_URL}/teste`,
-            "Origin": BASE_URL,
-            "X-Requested-With": "XMLHttpRequest",
-            "X-XSRF-TOKEN": csrfToken
-          },
-          body: params.toString()
-        });
+        // 1. First attempt
+        let directReview = await submitToBomCondutor(false);
 
-        console.log(`[Exam] Resposta do processamento: ${submitRes.status}`);
+        // 2. Check if the test was saved to the profile.
+        //    Bom Condutor returns stats: { tests: N, ... } when saved, or stats: false when not.
+        if (directReview && directReview.stats === false) {
+          console.log("[Exam] ⚠️ Teste NÃO foi guardado no perfil (stats: false). A forçar re-login e a tentar novamente...");
+          
+          // Force fresh login to get a properly authenticated session
+          await sessionManager.forceLogin();
 
-        let directReview = null;
-        try {
-          directReview = await submitRes.json();
-        } catch (e) {}
+          // Retry submission with the fresh session
+          const retryReview = await submitToBomCondutor(true);
+          
+          if (retryReview && retryReview.stats && retryReview.stats !== false) {
+            console.log(`[Exam] ✅ Retry bem-sucedido! Teste guardado no perfil (tests: ${retryReview.stats.tests}).`);
+            directReview = retryReview;
+          } else if (retryReview) {
+            console.log(`[Exam] ⚠️ Retry concluído mas stats continua: ${JSON.stringify(retryReview.stats)}`);
+            // Still use the retry result since it may have more data
+            directReview = retryReview;
+          } else {
+            console.log("[Exam] ⚠️ Retry falhou, a usar resultado da primeira tentativa.");
+          }
+        } else if (directReview?.stats && typeof directReview.stats === "object") {
+          console.log(`[Exam] ✅ Teste guardado no perfil com sucesso (tests: ${directReview.stats.tests}).`);
+        }
 
-        // 2. GET https://www.bomcondutor.pt/teste/resultado to scrape testReview with full solutions
-        const resultPageRes = await sessionManager.fetch(`${BASE_URL}/teste/resultado`);
+        // 3. GET /teste/resultado to scrape testReview with full question data, solutions, etc.
+        const resultPageRes = await sessionManager.rawFetch(`${BASE_URL}/teste/resultado`);
         const resultHtml = await resultPageRes.text();
 
         const reviewMatch = resultHtml.match(/BC\.constant\('testReview',\s*(\{.*?\})\);/);
@@ -474,6 +631,35 @@ const server = Bun.serve({
           }, { status: 500, headers: corsHeaders });
         }
 
+        // Merge permalink and stats from directReview if missing in testReview
+        if (!finalReview.permalink && directReview?.permalink) {
+          finalReview.permalink = directReview.permalink;
+        }
+        if (finalReview.permalink) {
+          finalReview.permalink = String(finalReview.permalink)
+            .trim()
+            .replace(/^https?:\/\/[^\/]+\/(testes?\/)?/, "")
+            .replace(/^\/?(testes?\/)?/, "");
+        }
+
+        // Include whether the test was saved to the profile
+        const wasSaved = directReview?.stats && typeof directReview.stats === "object";
+        finalReview._savedToProfile = wasSaved;
+
+        // Enrich review and setup questions with image URLs and decrypted explanations
+        for (const list of [finalReview.questions, testSetup?.questions]) {
+          if (Array.isArray(list)) {
+            for (const q of list) {
+              q.imageUrl = `${BASE_URL}/assets/images/questions/${q.id}.jpg`;
+              q.proxyImageUrl = `/api/image/${q.id}`;
+              if (q.explicacao) {
+                const dec = decryptExplanation(q.id, q.explicacao);
+                if (dec) q.explicacao = dec;
+              }
+            }
+          }
+        }
+
         return Response.json({
           review: finalReview,
           setup: testSetup,
@@ -481,6 +667,17 @@ const server = Bun.serve({
       } catch (e: any) {
         return Response.json({ error: e.message }, { status: 500, headers: corsHeaders });
       }
+    }
+
+    // 5. API: Question Comments
+    if (pathname.startsWith("/api/question/") && pathname.endsWith("/comments") && req.method === "GET") {
+      const match = pathname.match(/^\/api\/question\/(\d+)\/comments$/);
+      if (!match) {
+        return Response.json({ error: "Invalid question ID" }, { status: 400, headers: corsHeaders });
+      }
+      const qid = match[1];
+      const comments = await getQuestionComments(qid);
+      return Response.json({ comments }, { headers: corsHeaders });
     }
 
     // 5. Image Proxy to avoid CORS / loading issues

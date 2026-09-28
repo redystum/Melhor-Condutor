@@ -22,13 +22,9 @@ const state = {
 
 // DOM Element Selectors
 const els = {
-  // Overlays & Badges
+  // Overlays
   loadingOverlay: document.getElementById("loading-overlay"),
   loadingMsg: document.getElementById("loading-msg"),
-  statusPill: document.getElementById("status-pill"),
-  statusText: document.getElementById("status-text"),
-  userBadge: document.getElementById("user-badge"),
-  userEmailDisplay: document.getElementById("user-email-display"),
 
   // Views
   viewSelection: document.getElementById("view-selection"),
@@ -127,17 +123,10 @@ function switchView(viewName) {
 
 // 1. Initial Load & Fetch Options
 async function initApp() {
-  showLoading("A estabelecer ligação com o Bom Condutor...");
+  showLoading("A carregar opções do Bom Condutor...");
   try {
-    // 1. Check status
-    const statusRes = await fetch("/api/status");
-    const statusData = await statusRes.json();
-    if (statusData.email) {
-      els.userBadge.style.display = "flex";
-      els.userEmailDisplay.textContent = statusData.email;
-    }
-    els.statusPill.classList.add("online");
-    els.statusText.textContent = "Sessão Conectada";
+    // 1. Check status (non-blocking)
+    await fetch("/api/status").catch(() => {});
 
     // 2. Fetch selections and user stats from /api/teste/options
     const optionsRes = await fetch("/api/teste/options");
@@ -148,8 +137,6 @@ async function initApp() {
     renderLobby(data);
   } catch (err) {
     console.error(err);
-    els.statusPill.classList.remove("online");
-    els.statusText.textContent = "Erro de Ligação";
     alert(`Erro ao iniciar aplicação: ${err.message}`);
   } finally {
     hideLoading();
@@ -423,13 +410,6 @@ function renderQuestion(index) {
       }
       renderQuestion(index);
       updateProgress();
-
-      // Quick advance if answered
-      if (state.answers[q.id] && index < exam.questions.length - 1) {
-        setTimeout(() => {
-          if (state.currentQIndex === index) renderQuestion(index + 1);
-        }, 220);
-      }
     };
 
     els.optionsContainer.appendChild(card);
@@ -501,11 +481,6 @@ window.addEventListener("keydown", (e) => {
   if (chosenLetter && q.respostas[chosenLetter]) {
     state.answers[q.id] = chosenLetter;
     renderQuestion(state.currentQIndex);
-    if (state.currentQIndex < state.exam.questions.length - 1) {
-      setTimeout(() => {
-        renderQuestion(state.currentQIndex + 1);
-      }, 200);
-    }
   } else if (e.key === "ArrowLeft") {
     if (state.currentQIndex > 0) renderQuestion(state.currentQIndex - 1);
   } else if (e.key === "ArrowRight") {
@@ -580,6 +555,104 @@ async function submitExam(force) {
   }
 }
 
+// Explanation Decryption Helper (Reversed from Bom Condutor BCapp.min.js)
+function decryptExplanation(questionId, cipher) {
+  if (!cipher || typeof cipher !== "string") return null;
+  const trimmed = cipher.trim();
+  if (trimmed.startsWith("<p") || trimmed.includes(" ") || trimmed.length < 15) {
+    return trimmed;
+  }
+  try {
+    const qidStr = String(questionId);
+    let sum = 0;
+    for (let i = 0; i < qidStr.length; i++) {
+      sum += parseInt(qidStr[i], 10) || 0;
+    }
+    const r = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const o = sum % r.length;
+    const a = r.substring(o) + r.substring(0, o);
+
+    let transliterated = "";
+    for (let i = 0; i < trimmed.length; i++) {
+      const idx = a.indexOf(trimmed[i]);
+      transliterated += (idx !== -1) ? r[idx] : trimmed[i];
+    }
+
+    const decoded = atob(transliterated);
+    try {
+      return JSON.parse(decoded);
+    } catch {
+      return decoded;
+    }
+  } catch (e) {
+    return cipher;
+  }
+}
+
+// Comments Cache & Toggle Handler
+const commentsCache = new Map();
+
+window.toggleQuestionComments = async function(qid, btn) {
+  const drawer = document.getElementById(`comments-drawer-${qid}`);
+  if (!drawer) return;
+
+  const isOpen = drawer.classList.contains("open");
+  if (isOpen) {
+    drawer.classList.remove("open");
+    btn.innerHTML = `<i class="fa-regular fa-comments"></i> Ver Comentários`;
+    return;
+  }
+
+  drawer.classList.add("open");
+  btn.innerHTML = `<i class="fa-solid fa-comments"></i> Ocultar Comentários`;
+
+  if (commentsCache.has(qid)) {
+    renderCommentsInDrawer(drawer, commentsCache.get(qid));
+    return;
+  }
+
+  drawer.innerHTML = `<div style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem;"><i class="fa-solid fa-spinner fa-spin"></i> A carregar comentários do Bom Condutor...</div>`;
+
+  try {
+    const res = await fetch(`/api/question/${qid}/comments`);
+    const data = await res.json();
+    const comments = data.comments || [];
+    commentsCache.set(qid, comments);
+    renderCommentsInDrawer(drawer, comments);
+  } catch (err) {
+    drawer.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem; padding: 0.5rem;"><i class="fa-solid fa-triangle-exclamation"></i> Não foi possível carregar os comentários.</div>`;
+  }
+};
+
+function renderCommentsInDrawer(drawer, comments) {
+  if (!comments || comments.length === 0) {
+    drawer.innerHTML = `<div style="color: var(--text-dim); font-size: 0.85rem; padding: 0.5rem;"><i class="fa-regular fa-comment-dots"></i> Esta questão ainda não possui comentários no Bom Condutor.</div>`;
+    return;
+  }
+
+  let html = "";
+  comments.forEach(c => {
+    let dateStr = "";
+    if (c.createdAt) {
+      try {
+        dateStr = new Date(c.createdAt).toLocaleDateString("pt-PT", { year: "numeric", month: "short", day: "numeric" });
+      } catch {}
+    }
+
+    html += `
+      <div class="comment-bubble ${c.isOfficial ? "official" : ""}">
+        <div class="comment-meta">
+          <span class="comment-author">${c.author || "Anónimo"}</span>
+          ${c.isOfficial ? '<span class="comment-official-tag"><i class="fa-solid fa-shield-halved"></i> Bom Condutor</span>' : ""}
+          <span class="comment-time">${dateStr}</span>
+        </div>
+        <div class="comment-msg">${c.message}</div>
+      </div>
+    `;
+  });
+  drawer.innerHTML = html;
+}
+
 // 3. Render Results Screen
 function renderResults(review, examSetup) {
   const isApproved = review.result;
@@ -596,23 +669,60 @@ function renderResults(review, examSetup) {
     ? `Excelente prestação! Errou apenas ${wrongCount} questão(ões) (limite oficial: 3).`
     : `Cometeu ${wrongCount} erros. No exame oficial de condução o limite máximo é de 3 respostas erradas.`;
 
+  // Fix "Ver no Bom Condutor" URL to always point to https://www.bomcondutor.pt/testes/<hash>
   if (review.permalink) {
     els.linkBomcondutorReview.style.display = "inline-flex";
-    els.linkBomcondutorReview.href = review.permalink.startsWith("http") 
-      ? review.permalink 
-      : `https://www.bomcondutor.pt${review.permalink}`;
+    const cleanPermalink = String(review.permalink)
+      .trim()
+      .replace(/^https?:\/\/[^\/]+\/(testes?\/)?/, "")
+      .replace(/^\/?(testes?\/)?/, "");
+    els.linkBomcondutorReview.href = `https://www.bomcondutor.pt/testes/${cleanPermalink}`;
   } else {
     els.linkBomcondutorReview.style.display = "none";
+  }
+
+  // Profile save status indicator
+  const existingProfileBadge = document.getElementById("profile-save-badge");
+  if (existingProfileBadge) existingProfileBadge.remove();
+
+  const profileBadge = document.createElement("div");
+  profileBadge.id = "profile-save-badge";
+  profileBadge.style.cssText = "margin-top: 0.75rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; justify-content: center;";
+  
+  if (review._savedToProfile) {
+    profileBadge.style.color = "var(--success)";
+    profileBadge.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Teste guardado no perfil Bom Condutor';
+  } else if (review._savedToProfile === false) {
+    profileBadge.style.color = "var(--warning, #f59e0b)";
+    profileBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Teste pode não ter sido guardado no perfil';
+  }
+  
+  if (review._savedToProfile !== undefined) {
+    els.verdictBanner.appendChild(profileBadge);
   }
 
   // Metrics
   els.metricWrong.textContent = wrongCount;
   els.metricCorrect.textContent = correctCount;
   els.metricTime.textContent = formatTime(review.time || 0);
-  els.metricDifficulty.textContent = review.difficulty ? `${review.difficulty}/10` : "Média";
+
+  // Difficulty - display string ("Muito Difícil", "Média", "Fácil", etc.) instead of [object Object]/10
+  let diffDisplay = "Média";
+  if (review.difficulty) {
+    if (typeof review.difficulty === "object") {
+      diffDisplay = review.difficulty.text || review.difficulty.label || review.difficulty.name || "Média";
+    } else {
+      diffDisplay = String(review.difficulty);
+    }
+  }
+  els.metricDifficulty.textContent = diffDisplay;
 
   // Filter Counts
-  els.countAll.textContent = examSetup.questions.length;
+  const totalQuestions = (review.questions && review.questions.length > 0) 
+    ? review.questions.length 
+    : (examSetup?.questions?.length || 30);
+
+  els.countAll.textContent = totalQuestions;
   els.countWrong.textContent = wrongCount;
   els.countCorrect.textContent = correctCount;
 
@@ -631,7 +741,9 @@ function renderReviewCards(filter, review, examSetup) {
   state.reviewFilter = filter;
   els.reviewQuestionsList.innerHTML = "";
 
-  const questions = examSetup.questions;
+  const questions = (review.questions && review.questions.length > 0) 
+    ? review.questions 
+    : (examSetup?.questions || []);
   const answersList = review.answers || []; // array of { pick, solution }
 
   questions.forEach((q, idx) => {
@@ -678,6 +790,14 @@ function renderReviewCards(filter, review, examSetup) {
       `;
     });
 
+    // Resolve explanation (decrypted)
+    let rawExp = q.explicacao;
+    if (!rawExp && examSetup?.questions) {
+      const matchQ = examSetup.questions.find(sq => sq.id === q.id);
+      if (matchQ?.explicacao) rawExp = matchQ.explicacao;
+    }
+    const decryptedExp = decryptExplanation(q.id, rawExp);
+
     card.innerHTML = `
       <div class="review-header">
         <span class="q-tag">Questão ${idx + 1} de ${questions.length}</span>
@@ -694,7 +814,20 @@ function renderReviewCards(filter, review, examSetup) {
         <div class="review-details">
           <div class="review-question-text">${q.questao}</div>
           <div class="review-options">${optionsHtml}</div>
-          ${q.explicacao ? `<div class="review-explanation"><strong>Explicação:</strong> ${q.explicacao}</div>` : ""}
+          ${decryptedExp ? `
+            <div class="review-explanation">
+              <div class="review-explanation-header">
+                <i class="fa-solid fa-lightbulb"></i> Explicação Oficial Bom Condutor
+              </div>
+              <div class="review-explanation-content">${decryptedExp}</div>
+            </div>
+          ` : ""}
+          <div class="review-comments-wrapper">
+            <button type="button" class="btn-toggle-comments" onclick="toggleQuestionComments(${q.id}, this)">
+              <i class="fa-regular fa-comments"></i> Ver Comentários
+            </button>
+            <div class="comments-drawer" id="comments-drawer-${q.id}"></div>
+          </div>
         </div>
       </div>
     `;

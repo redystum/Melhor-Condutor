@@ -1,0 +1,12 @@
+{
+  "name": "melhor-condutor",
+  "version": "1.0.0",
+  "description": "Interface em tempo real para exames do Bom Condutor",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "start": "bun server.ts",
+    "dev": "bun --watch server.ts"
+  },
+  "dependencies": {}
+}

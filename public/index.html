@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melhor Condutor | Prática de Testes de Código em Tempo Real</title>
+  <meta name="description" content="Plataforma interativa para realização de testes de código de condução sincronizados em tempo real com o Bom Condutor.">
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome for crisp vector icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand" id="brand-logo">
+        <div class="brand-icon">
+          <i class="fa-solid fa-car-side"></i>
+        </div>
+        <div class="brand-text">
+          <h1>Melhor<span>Condutor</span></h1>
+          <span class="brand-badge">Tempo Real</span>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-indicator online" id="status-pill">
+          <span class="dot"></span>
+          <span class="label" id="status-text">A ligar ao Bom Condutor...</span>
+        </div>
+        <div class="user-badge" id="user-badge" style="display: none;">
+          <i class="fa-solid fa-user-circle"></i>
+          <span id="user-email-display"></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="app-main">
+    
+    <!-- ========================================== -->
+    <!-- 1. SELECTION SCREEN (LOBBY)                -->
+    <!-- ========================================== -->
+    <section id="view-selection" class="app-view active">
+      <div class="view-container">
+        
+        <!-- User Stats Bar (scraped from profile) -->
+        <div class="user-stats-card" id="user-stats-card" style="display: none;">
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">Índice Bom Condutor</span>
+              <span class="stat-value highlight" id="stat-indice">0.0%</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Testes Feitos</span>
+              <span class="stat-value" id="stat-tests">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Aprovados</span>
+              <span class="stat-value success" id="stat-success">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Reprovados</span>
+              <span class="stat-value danger" id="stat-failed">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Respostas Erradas</span>
+              <span class="stat-value warning" id="stat-wrong">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recommended Exam Hero Card -->
+        <div class="recommended-card glass-panel" id="recommended-card" style="display: none;">
+          <div class="recommended-header">
+            <span class="sparkle-tag"><i class="fa-solid fa-wand-magic-sparkles"></i> Sugestão do Algoritmo</span>
+            <h3>Teste Recomendado para Si</h3>
+          </div>
+          <p class="recommended-desc" id="recommended-text">A carregar sugestão personalizada...</p>
+          <div class="recommended-actions">
+            <button class="btn btn-primary btn-lg" id="btn-start-recommended">
+              <i class="fa-solid fa-play"></i> Iniciar Teste Recomendado
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Exam Builder Section -->
+        <div class="configurator-card glass-panel">
+          <div class="section-title">
+            <div class="step-num">1</div>
+            <div>
+              <h2>Escolha a Categoria</h2>
+              <p>Selecione a categoria de veículo para a qual pretende realizar o teste</p>
+            </div>
+          </div>
+
+          <div class="category-grid" id="category-grid">
+            <!-- Dynamically populated categories -->
+          </div>
+
+          <div class="section-title mt-4">
+            <div class="step-num">2</div>
+            <div>
+              <h2>Escolha o Tipo de Teste</h2>
+              <p>Selecione a modalidade de treino</p>
+            </div>
+          </div>
+
+          <div class="types-grid" id="types-grid">
+            <!-- Dynamically populated types -->
+          </div>
+
+          <!-- Thematic subselection (visible only if type === 'tematico') -->
+          <div class="themes-container mt-4" id="themes-container" style="display: none;">
+            <div class="themes-header">
+              <div>
+                <h3><i class="fa-solid fa-layer-group"></i> Selecione os Temas</h3>
+                <p>Escolha um ou vários temas específicos desta categoria</p>
+              </div>
+              <div class="themes-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-select-all-themes">Selecionar Todos</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-themes">Limpar</button>
+              </div>
+            </div>
+            <div class="themes-list" id="themes-list">
+              <!-- Dynamically populated themes -->
+            </div>
+          </div>
+
+          <!-- Start Custom Test Action -->
+          <div class="start-action-bar">
+            <button class="btn btn-primary btn-lg" id="btn-start-custom" disabled>
+              <i class="fa-solid fa-circle-play"></i> Iniciar Teste Selecionado
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 2. EXAM ACTIVE SCREEN                      -->
+    <!-- ========================================== -->
+    <section id="view-exam" class="app-view">
+      <div class="exam-container">
+        
+        <!-- Sticky Exam Topbar HUD -->
+        <div class="exam-hud glass-panel">
+          <div class="hud-left">
+            <div class="exam-title-badge" id="exam-badge-title">Exame B - Novas</div>
+            <div class="question-tracker">
+              Questão <span id="current-q-num">1</span> de <span id="total-q-num">30</span>
+            </div>
+          </div>
+
+          <div class="hud-center">
+            <div class="hud-timer" id="hud-timer">
+              <i class="fa-regular fa-clock"></i>
+              <span id="timer-display">30:00</span>
+            </div>
+          </div>
+
+          <div class="hud-right">
+            <button class="btn btn-danger btn-sm" id="btn-finish-exam">
+              <i class="fa-solid fa-flag-checkered"></i> Terminar Teste
+            </button>
+          </div>
+        </div>
+
+        <!-- Progress Tracker Bar -->
+        <div class="exam-progress-bar">
+          <div class="exam-progress-fill" id="exam-progress-fill" style="width: 0%;"></div>
+        </div>
+
+        <!-- Main Question Canvas -->
+        <div class="exam-canvas">
+          
+          <!-- Left: Question & Answers Area -->
+          <div class="question-content glass-panel">
+            
+            <div class="question-meta">
+              <span class="q-tag" id="q-category-tag">Categoria B</span>
+              <div class="q-topics" id="q-topics-list"></div>
+            </div>
+
+            <div class="question-text" id="q-statement">
+              A carregar questão...
+            </div>
+
+            <!-- Image with zoom overlay -->
+            <div class="question-image-box" id="q-image-container">
+              <img id="q-image" src="" alt="Imagem da Questão de Código" loading="eager">
+              <div class="image-hint"><i class="fa-solid fa-magnifying-glass-plus"></i> Clique para ampliar</div>
+            </div>
+
+            <!-- Answer Options List -->
+            <div class="options-container" id="options-container">
+              <!-- Dynamically populated options A, B, C, D -->
+            </div>
+
+            <!-- Exam Navigation Buttons -->
+            <div class="exam-nav-buttons">
+              <button class="btn btn-secondary" id="btn-prev-question">
+                <i class="fa-solid fa-chevron-left"></i> Anterior (←)
+              </button>
+              <button class="btn btn-primary" id="btn-next-question">
+                Seguinte (→) <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Right: Grid of Question Buttons -->
+          <aside class="questions-palette glass-panel">
+            <div class="palette-header">
+              <h4>Navegação</h4>
+              <span class="answered-ratio" id="answered-ratio">0 / 30</span>
+            </div>
+            
+            <div class="questions-grid" id="questions-grid">
+              <!-- Buttons 1 to 30 -->
+            </div>
+
+            <div class="palette-legend">
+              <div class="legend-item"><span class="box current"></span> Atual</div>
+              <div class="legend-item"><span class="box answered"></span> Respondida</div>
+              <div class="legend-item"><span class="box unanswered"></span> Em falta</div>
+            </div>
+
+            <div class="keyboard-shortcuts-hint">
+              <small><i class="fa-solid fa-keyboard"></i> Dica: Use as teclas <strong>1-4</strong> ou <strong>A-D</strong> para responder, e <strong>Setas</strong> para navegar.</small>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- 3. RESULTS & REVIEW SCREEN                 -->
+    <!-- ========================================== -->
+    <section id="view-results" class="app-view">
+      <div class="results-container">
+        
+        <!-- Score Verdict Banner -->
+        <div class="verdict-banner glass-panel" id="verdict-banner">
+          <div class="verdict-icon" id="verdict-icon">
+            <i class="fa-solid fa-trophy"></i>
+          </div>
+          <div class="verdict-details">
+            <h2 id="verdict-title">Resultado do Teste</h2>
+            <p id="verdict-subtitle">Resumo da sua prestação oficial</p>
+          </div>
+          <div class="verdict-actions">
+            <button class="btn btn-primary" id="btn-back-to-lobby">
+              <i class="fa-solid fa-rotate-right"></i> Novo Teste
+            </button>
+            <a href="#" target="_blank" class="btn btn-secondary" id="link-bomcondutor-review">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Ver no Bom Condutor
+            </a>
+          </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+          <div class="metric-card glass-panel">
+            <span class="metric-title">Erros Cometidos</span>
+            <span class="metric-number danger" id="metric-wrong">0</span>
+            <small class="metric-sub" id="metric-wrong-limit">Máximo permitido: 3</small>
+          </div>
+          <div class="metric-card glass-panel">
+            <span class="metric-title">Respostas Corretas</span>
+            <span class="metric-number success" id="metric-correct">0</span>
+            <small class="metric-sub">de 30 questões</small>
+          </div>
+          <div class="metric-card glass-panel">
+            <span class="metric-title">Tempo Gasto</span>
+            <span class="metric-number" id="metric-time">--:--</span>
+            <small class="metric-sub">Duração do exame</small>
+          </div>
+          <div class="metric-card glass-panel">
+            <span class="metric-title">Dificuldade</span>
+            <span class="metric-number highlight" id="metric-difficulty">Média</span>
+            <small class="metric-sub">Índice Bom Condutor</small>
+          </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="review-filter-bar">
+          <h3>Revisão das Questões</h3>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter="all" id="filter-all">Todas (<span id="count-all">30</span>)</button>
+            <button class="filter-pill" data-filter="wrong" id="filter-wrong">Erradas (<span id="count-wrong">0</span>)</button>
+            <button class="filter-pill" data-filter="correct" id="filter-correct">Corretas (<span id="count-correct">0</span>)</button>
+          </div>
+        </div>
+
+        <!-- Detailed Review List -->
+        <div class="review-questions-list" id="review-questions-list">
+          <!-- Dynamically populated review cards -->
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Global Loading Overlay -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner-box">
+      <div class="spinner"></div>
+      <p id="loading-msg">A carregar dados do Bom Condutor em tempo real...</p>
+    </div>
+  </div>
+
+  <!-- Image Lightbox Modal -->
+  <dialog id="lightbox-dialog" class="lightbox-dialog">
+    <div class="lightbox-content">
+      <img id="lightbox-img" src="" alt="Imagem ampliada">
+      <button class="lightbox-close" id="lightbox-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </dialog>
+
+  <!-- Confirmation Dialog before Submitting -->
+  <dialog id="confirm-submit-dialog" class="confirm-dialog glass-panel">
+    <div class="dialog-header">
+      <i class="fa-solid fa-triangle-exclamation warning-icon"></i>
+      <h3>Terminar Teste?</h3>
+    </div>
+    <div class="dialog-body">
+      <p id="confirm-dialog-msg">Ainda tem questões por responder. Tem a certeza que pretende terminar agora?</p>
+      <small>As questões não respondidas serão contabilizadas como erradas.</small>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-secondary" id="btn-cancel-submit">Continuar a Responder</button>
+      <button type="button" class="btn btn-danger" id="btn-confirm-submit">Sim, Terminar</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

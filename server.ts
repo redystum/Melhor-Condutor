@@ -404,6 +404,7 @@ async function getQuestionComments(qid: string): Promise<CommentItem[]> {
 // Bun Server implementation
 const server = Bun.serve({
   port: PORT,
+  hostname: "0.0.0.0",
   async fetch(req: Request) {
     const url = new URL(req.url);
     const pathname = url.pathname;
@@ -717,19 +718,37 @@ const server = Bun.serve({
     // 6. Static Web Files
     const publicDir = join(process.cwd(), "public");
 
-    if (pathname === "/" || pathname === "/index.html") {
-      const file = Bun.file(join(publicDir, "index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    // Serve static files from public directory
+    const MIME_TYPES: Record<string, string> = {
+      ".html": "text/html; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".js": "application/javascript; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".svg": "image/svg+xml",
+      ".ico": "image/x-icon",
+      ".webp": "image/webp",
+      ".woff": "font/woff",
+      ".woff2": "font/woff2",
+    };
+
+    // Resolve "/" to "/index.html"
+    const filePath = pathname === "/" ? "/index.html" : pathname;
+    const safePath = join(publicDir, filePath);
+
+    // Prevent path traversal
+    if (!safePath.startsWith(publicDir)) {
+      return new Response("Forbidden", { status: 403 });
     }
 
-    if (pathname === "/style.css") {
-      const file = Bun.file(join(publicDir, "style.css"));
-      return new Response(file, { headers: { "Content-Type": "text/css; charset=utf-8" } });
-    }
-
-    if (pathname === "/app.js") {
-      const file = Bun.file(join(publicDir, "app.js"));
-      return new Response(file, { headers: { "Content-Type": "application/javascript; charset=utf-8" } });
+    const file = Bun.file(safePath);
+    if (await file.exists()) {
+      const ext = filePath.substring(filePath.lastIndexOf("."));
+      const contentType = MIME_TYPES[ext] || "application/octet-stream";
+      return new Response(file, { headers: { "Content-Type": contentType } });
     }
 
     return new Response("Not Found", { status: 404 });

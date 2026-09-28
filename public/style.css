@@ -149,6 +149,11 @@ body::before {
   color: var(--primary);
 }
 
+.header-user {
+ color: var(--text-muted);
+ font-size: 0.95rem;
+}
+
 /* App Main Views Manager */
 .app-main {
   max-width: 1280px;

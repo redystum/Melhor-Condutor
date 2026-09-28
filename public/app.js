@@ -26,6 +26,9 @@ const els = {
   loadingOverlay: document.getElementById("loading-overlay"),
   loadingMsg: document.getElementById("loading-msg"),
 
+  // Header
+  headerEmail: document.getElementById("header-email"),
+
   // Views
   viewSelection: document.getElementById("view-selection"),
   viewExam: document.getElementById("view-exam"),
@@ -125,8 +128,14 @@ function switchView(viewName) {
 async function initApp() {
   showLoading("A carregar opções do Bom Condutor...");
   try {
-    // 1. Check status (non-blocking)
-    await fetch("/api/status").catch(() => {});
+    // 1. Check status and display the authenticated user's email
+    const statusRes = await fetch("/api/status").catch(() => null);
+    if (statusRes?.ok) {
+      const status = await statusRes.json();
+      if (status.email) {
+        els.headerEmail.textContent = status.email;
+      }
+    }
 
     // 2. Fetch selections and user stats from /api/teste/options
     const optionsRes = await fetch("/api/teste/options");

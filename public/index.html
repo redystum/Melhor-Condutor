@@ -146,13 +146,13 @@
     <section id="view-exam" class="app-view">
       <div class="exam-container">
         
-        <!-- Sticky Exam Topbar HUD -->
+        <!-- Sticky Exam Topbar HUD (Bom Condutor Style: Ajuda | Timer | Terminar) -->
         <div class="exam-hud glass-panel">
           <div class="hud-left">
-            <div class="exam-title-badge" id="exam-badge-title">Exame B - Novas</div>
-            <div class="question-tracker">
-              Questão <span id="current-q-num">1</span> de <span id="total-q-num">30</span>
-            </div>
+            <button type="button" class="hud-btn hud-btn-help" id="btn-hud-help" title="Ajuda e Instruções">
+              <i class="fa-solid fa-life-ring"></i>
+              <span>Ajuda</span>
+            </button>
           </div>
 
           <div class="hud-center">
@@ -163,13 +163,26 @@
           </div>
 
           <div class="hud-right">
-            <button class="btn btn-danger btn-sm" id="btn-finish-exam">
-              <i class="fa-solid fa-flag-checkered"></i> Terminar Teste
+            <button type="button" class="btn btn-danger btn-sm hud-btn-finish" id="btn-finish-exam">
+              <i class="fa-solid fa-xmark"></i> <span>TERMINAR</span>
             </button>
           </div>
         </div>
 
-        <!-- Progress Tracker Bar -->
+        <!-- Carousel Question Navigator (Horizontal Strip < 1 2 3 4 >) -->
+        <div class="exam-carousel-bar">
+          <button type="button" class="carousel-arrow" id="carousel-prev" title="Questão anterior">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <div class="carousel-strip" id="carousel-strip">
+            <!-- Dynamically populated with question numbers 1..30 -->
+          </div>
+          <button type="button" class="carousel-arrow" id="carousel-next" title="Questão seguinte">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <!-- Progress Tracker Line -->
         <div class="exam-progress-bar">
           <div class="exam-progress-fill" id="exam-progress-fill" style="width: 0%;"></div>
         </div>
@@ -177,43 +190,53 @@
         <!-- Main Question Canvas -->
         <div class="exam-canvas">
           
-          <!-- Left: Question & Answers Area -->
+          <!-- Question & Answers Card -->
           <div class="question-content glass-panel">
             
-            <div class="question-meta">
-              <span class="q-tag" id="q-category-tag">Categoria B</span>
-              <div class="q-topics" id="q-topics-list"></div>
-            </div>
-
-            <div class="question-text" id="q-statement">
-              A carregar questão...
-            </div>
-
-            <!-- Image with zoom overlay -->
+            <!-- Image with Zoom Icon at bottom-right (full width on mobile) -->
             <div class="question-image-box" id="q-image-container">
               <img id="q-image" src="" alt="Imagem da Questão de Código" loading="eager">
-              <div class="image-hint"><i class="fa-solid fa-magnifying-glass-plus"></i> Clique para ampliar</div>
+              <button type="button" class="image-zoom-btn" id="btn-zoom-image" title="Ampliar imagem">
+                <i class="fa-solid fa-magnifying-glass-plus"></i>
+              </button>
             </div>
 
-            <!-- Answer Options List -->
+            <!-- Question Bar: [ 1 ] [ Statement ] [ > ] -->
+            <div class="question-bar">
+              <button type="button" class="q-num-box" id="q-num-badge" title="Questão anterior">
+                <span class="q-num-val" id="q-num-val">1</span>
+                <i class="fa-solid fa-chevron-left q-num-prev-icon"></i>
+              </button>
+              <div class="question-text" id="q-statement">
+                A carregar questão...
+              </div>
+              <button type="button" class="q-inline-next-btn" id="btn-q-inline-next" title="Questão seguinte">
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+
+            <!-- Answer Options List (A, B, C...) -->
             <div class="options-container" id="options-container">
               <!-- Dynamically populated options A, B, C, D -->
             </div>
 
-            <!-- Exam Navigation Buttons -->
+            <!-- Bottom Navigation Bar -->
             <div class="exam-nav-buttons">
-              <button class="btn btn-secondary" id="btn-prev-question">
-                <i class="fa-solid fa-chevron-left"></i> Anterior (←)
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-prev-question">
+                <i class="fa-solid fa-chevron-left"></i> Anterior
               </button>
-              <button class="btn btn-primary" id="btn-next-question">
-                Seguinte (→) <i class="fa-solid fa-chevron-right"></i>
+              <div class="question-tracker-compact">
+                <span id="current-q-num">1</span> / <span id="total-q-num">30</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-next-question">
+                Seguinte <i class="fa-solid fa-chevron-right"></i>
               </button>
             </div>
 
           </div>
 
-          <!-- Right: Grid of Question Buttons -->
-          <aside class="questions-palette glass-panel">
+          <!-- Desktop Sidebar Palette (auto-hidden on mobile screens) -->
+          <aside class="questions-palette glass-panel desktop-palette">
             <div class="palette-header">
               <h4>Navegação</h4>
               <span class="answered-ratio" id="answered-ratio">0 / 30</span>
@@ -230,7 +253,7 @@
             </div>
 
             <div class="keyboard-shortcuts-hint">
-              <small><i class="fa-solid fa-keyboard"></i> Dica: Use as teclas <strong>1-4</strong> ou <strong>A-D</strong> para responder, e <strong>Setas</strong> para navegar.</small>
+              <small><i class="fa-solid fa-keyboard"></i> Teclas <strong>1-4</strong> / <strong>A-D</strong> para responder, <strong>Setas</strong> para navegar.</small>
             </div>
           </aside>
 
@@ -336,6 +359,24 @@
     <div class="dialog-footer">
       <button type="button" class="btn btn-secondary" id="btn-cancel-submit">Continuar a Responder</button>
       <button type="button" class="btn btn-danger" id="btn-confirm-submit">Sim, Terminar</button>
+    </div>
+  </dialog>
+
+  <!-- Help & Shortcuts Dialog -->
+  <dialog id="help-dialog" class="confirm-dialog glass-panel">
+    <div class="dialog-header">
+      <i class="fa-solid fa-life-ring" style="color: var(--primary);"></i>
+      <h3>Instruções do Teste</h3>
+    </div>
+    <div class="dialog-body" style="font-size: 0.9rem; line-height: 1.55;">
+      <p>• <strong>Respostas:</strong> Selecione a opção (A, B, C ou D) que considera correta.</p>
+      <p>• <strong>Navegação:</strong> Utilize a barra superior numerada ou as setas laterais para navegar livremente entre questões.</p>
+      <p>• <strong>Ampliar Imagem:</strong> Toque no botão <i class="fa-solid fa-magnifying-glass-plus"></i> no canto da imagem para vê-la em tamanho completo.</p>
+      <p>• <strong>Atalhos de Teclado:</strong> Teclas <strong>1-4</strong> ou <strong>A-D</strong> para responder, e <strong>Setas Esquerda / Direita</strong> para navegar.</p>
+      <p>• <strong>Submissão:</strong> Clique em <strong>TERMINAR</strong> no topo quando tiver respondido a todas as questões.</p>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn btn-primary" id="btn-close-help">Entendido</button>
     </div>
   </dialog>
 

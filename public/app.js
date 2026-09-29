@@ -55,19 +55,26 @@ const els = {
   btnStartCustom: document.getElementById("btn-start-custom"),
 
   // Exam Screen
-  examBadgeTitle: document.getElementById("exam-badge-title"),
   currentQNum: document.getElementById("current-q-num"),
   totalQNum: document.getElementById("total-q-num"),
   hudTimer: document.getElementById("hud-timer"),
   timerDisplay: document.getElementById("timer-display"),
   examProgressFill: document.getElementById("exam-progress-fill"),
   btnFinishExam: document.getElementById("btn-finish-exam"),
+  btnHudHelp: document.getElementById("btn-hud-help"),
+  helpDialog: document.getElementById("help-dialog"),
+  btnCloseHelp: document.getElementById("btn-close-help"),
 
-  qCategoryTag: document.getElementById("q-category-tag"),
-  qTopicsList: document.getElementById("q-topics-list"),
+  carouselStrip: document.getElementById("carousel-strip"),
+  carouselPrev: document.getElementById("carousel-prev"),
+  carouselNext: document.getElementById("carousel-next"),
+
+  qNumBadge: document.getElementById("q-num-badge"),
   qStatement: document.getElementById("q-statement"),
+  btnQInlineNext: document.getElementById("btn-q-inline-next"),
   qImageContainer: document.getElementById("q-image-container"),
   qImage: document.getElementById("q-image"),
+  btnZoomImage: document.getElementById("btn-zoom-image"),
   optionsContainer: document.getElementById("options-container"),
   btnPrevQ: document.getElementById("btn-prev-question"),
   btnNextQ: document.getElementById("btn-next-question"),
@@ -331,15 +338,14 @@ async function startExam(requestPayload) {
 // Setup Exam HUD & Screen
 function setupExamScreen() {
   const exam = state.exam;
-  els.examBadgeTitle.textContent = exam.title || `Exame ${exam.category} - ${exam.type}`;
-  els.totalQNum.textContent = exam.questions.length;
+  if (els.totalQNum) els.totalQNum.textContent = exam.questions.length;
 
   // Setup Timer (30 minutes default)
   const durationMins = exam.time || 30;
   state.timeRemainingSeconds = durationMins * 60;
   startTimer();
 
-  // Render navigation palette
+  // Render navigation palette & carousel strip
   renderQuestionsPalette();
   renderQuestion(0);
 }
@@ -379,23 +385,45 @@ function renderQuestion(index) {
   const exam = state.exam;
   const q = exam.questions[index];
 
-  els.currentQNum.textContent = index + 1;
-  els.qCategoryTag.textContent = `Categoria ${exam.category}`;
+  if (els.currentQNum) els.currentQNum.textContent = index + 1;
+  if (els.qNumBadge) {
+    const numSpan = els.qNumBadge.querySelector(".q-num-val");
+    if (numSpan) numSpan.textContent = index + 1;
+    else els.qNumBadge.textContent = index + 1;
 
-  // Tags
-  els.qTopicsList.innerHTML = "";
-  if (q.tags && q.tags.length > 0) {
-    q.tags.forEach(t => {
-      const span = document.createElement("span");
-      span.className = "q-topic-badge";
-      span.textContent = t.tag;
-      els.qTopicsList.appendChild(span);
-    });
+    els.qNumBadge.disabled = index === 0;
+    els.qNumBadge.title = index === 0 ? "Primeira questão" : "Voltar à questão anterior";
+    els.qNumBadge.onclick = () => {
+      if (state.currentQIndex > 0) {
+        renderQuestion(state.currentQIndex - 1);
+      }
+    };
   }
 
   // Statement & Image
   els.qStatement.textContent = q.questao;
   els.qImage.src = q.proxyImageUrl || q.imageUrl;
+
+  // Image zoom button
+  if (els.btnZoomImage) {
+    els.btnZoomImage.onclick = (e) => {
+      e.stopPropagation();
+      openLightbox(q.proxyImageUrl || q.imageUrl);
+    };
+  }
+  els.qImageContainer.onclick = () => {
+    openLightbox(q.proxyImageUrl || q.imageUrl);
+  };
+
+  // Inline next button
+  if (els.btnQInlineNext) {
+    els.btnQInlineNext.disabled = index === exam.questions.length - 1;
+    els.btnQInlineNext.onclick = () => {
+      if (state.currentQIndex < exam.questions.length - 1) {
+        renderQuestion(state.currentQIndex + 1);
+      }
+    };
+  }
 
   // Options List
   els.optionsContainer.innerHTML = "";
@@ -425,26 +453,52 @@ function renderQuestion(index) {
   });
 
   // Navigation buttons state
-  els.btnPrevQ.disabled = index === 0;
-  els.btnNextQ.disabled = index === exam.questions.length - 1;
+  if (els.btnPrevQ) els.btnPrevQ.disabled = index === 0;
+  if (els.btnNextQ) els.btnNextQ.disabled = index === exam.questions.length - 1;
+  if (els.carouselPrev) els.carouselPrev.disabled = index === 0;
+  if (els.carouselNext) els.carouselNext.disabled = index === exam.questions.length - 1;
 
   updateProgress();
+
+  // Auto-scroll active carousel button into center view
+  if (els.carouselStrip) {
+    const activeCarouselBtn = els.carouselStrip.querySelector(`.carousel-q-btn[data-idx="${index}"]`);
+    if (activeCarouselBtn) {
+      activeCarouselBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  }
 }
 
-// Navigation Palette
+// Navigation Palette & Carousel Strip
 function renderQuestionsPalette() {
-  els.questionsGrid.innerHTML = "";
   const exam = state.exam;
 
-  exam.questions.forEach((q, idx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "q-btn";
-    btn.textContent = idx + 1;
+  // 1. Render Carousel Strip
+  if (els.carouselStrip) {
+    els.carouselStrip.innerHTML = "";
+    exam.questions.forEach((q, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "carousel-q-btn";
+      btn.dataset.idx = idx;
+      btn.textContent = idx + 1;
+      btn.onclick = () => renderQuestion(idx);
+      els.carouselStrip.appendChild(btn);
+    });
+  }
 
-    btn.onclick = () => renderQuestion(idx);
-    els.questionsGrid.appendChild(btn);
-  });
+  // 2. Render Desktop Sidebar Palette
+  if (els.questionsGrid) {
+    els.questionsGrid.innerHTML = "";
+    exam.questions.forEach((q, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "q-btn";
+      btn.textContent = idx + 1;
+      btn.onclick = () => renderQuestion(idx);
+      els.questionsGrid.appendChild(btn);
+    });
+  }
 }
 
 // Update progress bar & button states
@@ -453,28 +507,64 @@ function updateProgress() {
   const answeredCount = Object.keys(state.answers).length;
   const total = exam.questions.length;
 
-  els.answeredRatio.textContent = `${answeredCount} / ${total}`;
+  if (els.answeredRatio) els.answeredRatio.textContent = `${answeredCount} / ${total}`;
   const pct = (answeredCount / total) * 100;
-  els.examProgressFill.style.width = `${pct}%`;
+  if (els.examProgressFill) els.examProgressFill.style.width = `${pct}%`;
+
+  // Update button classes in carousel strip
+  if (els.carouselStrip) {
+    const cBtns = els.carouselStrip.querySelectorAll(".carousel-q-btn");
+    cBtns.forEach((btn, idx) => {
+      const q = exam.questions[idx];
+      btn.classList.toggle("answered", !!state.answers[q.id]);
+      btn.classList.toggle("current", idx === state.currentQIndex);
+    });
+  }
 
   // Update button classes in grid
-  const btns = els.questionsGrid.querySelectorAll(".q-btn");
-  btns.forEach((btn, idx) => {
-    const q = exam.questions[idx];
-    btn.classList.toggle("answered", !!state.answers[q.id]);
-    btn.classList.toggle("current", idx === state.currentQIndex);
-  });
+  if (els.questionsGrid) {
+    const btns = els.questionsGrid.querySelectorAll(".q-btn");
+    btns.forEach((btn, idx) => {
+      const q = exam.questions[idx];
+      btn.classList.toggle("answered", !!state.answers[q.id]);
+      btn.classList.toggle("current", idx === state.currentQIndex);
+    });
+  }
 }
 
 // Nav Buttons
-els.btnPrevQ.onclick = () => {
-  if (state.currentQIndex > 0) renderQuestion(state.currentQIndex - 1);
-};
-els.btnNextQ.onclick = () => {
-  if (state.currentQIndex < state.exam.questions.length - 1) {
-    renderQuestion(state.currentQIndex + 1);
-  }
-};
+if (els.btnPrevQ) {
+  els.btnPrevQ.onclick = () => {
+    if (state.currentQIndex > 0) renderQuestion(state.currentQIndex - 1);
+  };
+}
+if (els.btnNextQ) {
+  els.btnNextQ.onclick = () => {
+    if (state.currentQIndex < state.exam.questions.length - 1) {
+      renderQuestion(state.currentQIndex + 1);
+    }
+  };
+}
+if (els.carouselPrev) {
+  els.carouselPrev.onclick = () => {
+    if (state.currentQIndex > 0) renderQuestion(state.currentQIndex - 1);
+  };
+}
+if (els.carouselNext) {
+  els.carouselNext.onclick = () => {
+    if (state.currentQIndex < state.exam.questions.length - 1) {
+      renderQuestion(state.currentQIndex + 1);
+    }
+  };
+}
+
+// Help Modal
+if (els.btnHudHelp && els.helpDialog) {
+  els.btnHudHelp.onclick = () => els.helpDialog.showModal();
+}
+if (els.btnCloseHelp && els.helpDialog) {
+  els.btnCloseHelp.onclick = () => els.helpDialog.close();
+}
 
 // Keyboard Shortcuts Support (1-4, A-D, Arrows)
 window.addEventListener("keydown", (e) => {
@@ -662,11 +752,30 @@ function renderCommentsInDrawer(drawer, comments) {
   drawer.innerHTML = html;
 }
 
+// Helper: Calculate max allowed wrong answers (general 10% rule)
+function getMaxAllowedWrong(total) {
+  if (total <= 10) return 1;
+  if (total <= 20) return 3;
+  if (total <= 30) return 3;
+  if (total <= 40) return 4;
+  return Math.max(1, Math.round(total * 0.1));
+}
+
 // 3. Render Results Screen
 function renderResults(review, examSetup) {
-  const isApproved = review.result;
   const wrongCount = review.wrong ?? 0;
   const correctCount = review.correct ?? 0;
+  
+  const totalQuestions = (review.questions && review.questions.length > 0) 
+    ? review.questions.length 
+    : (examSetup?.questions?.length || 30);
+
+  const maxAllowedWrong = getMaxAllowedWrong(totalQuestions);
+
+  // If Bom Condutor provides review.result boolean, use it; otherwise evaluate against maxAllowedWrong
+  const isApproved = (typeof review.result === "boolean")
+    ? review.result
+    : (wrongCount <= maxAllowedWrong);
 
   // Verdict Banner
   els.verdictBanner.className = `verdict-banner glass-panel ${isApproved ? "approved" : "failed"}`;
@@ -675,8 +784,8 @@ function renderResults(review, examSetup) {
     : '<i class="fa-solid fa-circle-xmark"></i>';
   els.verdictTitle.textContent = isApproved ? "Aprovado!" : "Reprovado";
   els.verdictSubtitle.textContent = isApproved
-    ? `Excelente prestação! Errou apenas ${wrongCount} questão(ões) (limite oficial: 3).`
-    : `Cometeu ${wrongCount} erros. No exame oficial de condução o limite máximo é de 3 respostas erradas.`;
+    ? `Excelente prestação! Errou apenas ${wrongCount} questão(ões) (limite oficial: ${maxAllowedWrong}).`
+    : `Cometeu ${wrongCount} erros. No exame oficial de condução o limite máximo é de ${maxAllowedWrong} respostas erradas.`;
 
   // Fix "Ver no Bom Condutor" URL to always point to https://www.bomcondutor.pt/testes/<hash>
   if (review.permalink) {
@@ -727,10 +836,6 @@ function renderResults(review, examSetup) {
   els.metricDifficulty.textContent = diffDisplay;
 
   // Filter Counts
-  const totalQuestions = (review.questions && review.questions.length > 0) 
-    ? review.questions.length 
-    : (examSetup?.questions?.length || 30);
-
   els.countAll.textContent = totalQuestions;
   els.countWrong.textContent = wrongCount;
   els.countCorrect.textContent = correctCount;

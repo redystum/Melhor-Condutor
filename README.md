@@ -1,6 +1,18 @@
-# 🚗 Melhor Condutor
+<div align="center">
 
-Uma interface web moderna, rápida e responsiva para a realização de testes de código de condução em Portugal, sincronizada em tempo real com a plataforma [Bom Condutor](https://www.bomcondutor.pt).
+  <img src="logo.png" alt="Melhor Condutor Logo" width="160" height="160" style="border-radius: 28px; margin-bottom: 12px;" />
+
+  # 🚗 Melhor Condutor
+
+  **Interface moderna, rápida e responsiva para a realização de testes de código de condução em Portugal, sincronizada em tempo real com o Bom Condutor.**
+
+  [![Runtime](https://img.shields.io/badge/Runtime-Bun-f472b6?style=for-the-badge&logo=bun&logoColor=white)](https://bun.sh)
+  [![Language](https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+  [![Integration](https://img.shields.io/badge/Sync-Bom%20Condutor-10b981?style=for-the-badge)](https://www.bomcondutor.pt)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+
+
+</div>
 
 ---
 
